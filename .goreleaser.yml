@@ -1,0 +1,70 @@
+project_name: secure-supply-chain-example
+builds:
+  - ldflags:
+      - "-s -w"
+      # We harden our Go binaries as described in: https://www.redhat.com/en/blog/hardening-elf-binaries-using-relocation-read-only-relro
+      - "-extldflags=-zrelro"
+      - "-extldflags=-znow"
+    env:
+      - "CGO_ENABLED=0"
+      - "GO111MODULE=on"
+      - "GOFLAGS=-mod=readonly -trimpath"
+    goos:
+      # only create releases for Linux and MacOS
+      - linux
+      - darwin
+    goarch:
+      - amd64
+    main: .
+
+# This is necessary for supporting verifiable/reproducible builds: https://goreleaser.com/customization/gomod/
+gomod:
+  proxy: true
+
+# This will create a checksums file
+checksum:
+  name_template: 'checksums.txt'
+
+# This will create Software Bills of Materials (SBOMs) for the archive including all Go source files and the final binaries
+sboms:
+  - artifacts: archive
+  - id: source
+    artifacts: source
+
+# This enables a dedicated source tarball release. We have to set this explicitly, because otherwise we are not able
+# to sign a source tarball. A signed source tarball is necessary for downstreams like Linux distributions.
+source:
+  enabled: true
+
+# This block configures the signature mechanism with cosign. We do automatically use the OIDC workload identity from the Github
+# Actions pipeline. All signatures will be uploaded to the public Rekor signature transparency log. The signature can be verified
+# with cosign verify-blob ...
+signs:
+  - cmd: cosign
+    signature: "${artifact}.sig"
+    certificate: "${artifact}.pem"
+    args: ["sign-blob", "--output-signature=${signature}", "--output-certificate=${certificate}", "${artifact}"]
+    artifacts: all
+
+# This changelog blog specifies a template for Github changelogs with support for conventional commits: https://www.conventionalcommits.org/en/v1.0.0/
+changelog:
+  use: github
+  groups:
+    - title: Features
+      regexp: "^.*feat[(\\w)]*:+.*$"
+      order: 0
+    - title: 'Bug fixes'
+      regexp: "^.*fix[(\\w)]*:+.*$"
+      order: 1
+    - title: 'Documentation'
+      regexp: "^.*docs[(\\w)]*:+.*$"
+      order: 2
+    - title: 'Maintenance'
+      regexp: "^.*chore[(\\w]*:+.*$"
+      order: 3
+    - title: Others
+      order: 999
+
+# This sets prerelease detection to auto. All releases with a semver suffix such like v0.1.0-rc.1 will be handled as prerelease on the GitHub Release page
+release:
+  prerelease: auto
